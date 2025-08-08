@@ -1,0 +1,659 @@
+---
+title: "Business Cycle Analysis in Costa Rica and Denmark: An Empirical and Historical Perspective"
+author: "Andrés Fiallos & Mathilde Vallat"
+output: pdf
+abstract: This report compares the business cycles of Costa Rica and Denmark, two small, open economies with strong institutions but differing income levels and structures. Costa Rica, an upper-middle-income economy, faces higher volatility due to its reliance on trade, tourism, and foreign investment, while Denmark’s high-income economy experiences greater stability. Using the Hodrick-Prescott filter and historical analysis, the study examines their business cycle characteristics, volatility, and persistence, assessing the impact of past policies. Findings highlight Denmark’s institutional strength and Costa Rica’s fiscal challenges, with policy recommendations focusing on diversification and stabilization for Costa Rica and reducing vulnerability to global commodity prices as well as the risk of economic imbalances for Denmark.
+format:
+  pdf:
+    fontsize: 10pt
+    include-in-header:
+      text: |
+        \usepackage{tcolorbox}
+        \newtcolorbox{definitionbox}{
+          colback=white,
+          colframe=black,
+          boxrule=0.5pt,
+          arc=4pt,
+          boxsep=5pt,
+          left=6pt,
+          right=6pt,
+          top=6pt,
+          bottom=6pt,
+        }
+---
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, out.extra = "", fig.pos = "h")
+library(mFilter)
+library(quantmod)
+library(xts)
+library(data.table)
+library(dplyr)
+library(zoo)
+library(tidyr)
+library(ggplot2)
+library(R.matlab)
+library(gridExtra)
+library(grid)
+library(seasonal)
+library(readr)
+library(kableExtra)
+```
+
+```{r}
+# Extraction of data
+
+# Data sourced from OECD and from Costa Rica's National Statistics Office. 
+# Data from OECD is extracted in this code through an API call while data from Costa Rica's National Statistics Office is obtained from a file dowloaded from the website. Sources available in references section of this document. 
+
+options(scipen=999)
+# ################################################################################
+# OECD
+
+# USD 
+# data1 <- fread("https://sdmx.oecd.org/public/rest/data/OECD.SDD.NAD,DSD_NAMAIN1@DF_QNA_EXPENDITURE_USD,1.1/Q..CRI+DNK.S1M+S13+S1..B1GQ+P51G+P3.....V..?format=csv&startPeriod=1960-Q1&endPeriod=2024-Q4&dimensionAtObservation=AllDimensions")
+# 
+# data2 <- fread("https://sdmx.oecd.org/public/rest/data/OECD.SDD.NAD,DSD_NAMAIN1@DF_QNA_BY_ACTIVITY_COE,1.1/Q.Y.CRI+DNK...D11.._T.....?format=csv&startPeriod=1991-Q1&endPeriod=2024-Q4&dimensionAtObservation=AllDimensions")
+# 
+# data3 <- fread("https://sdmx.oecd.org/public/rest/data/OECD.SDD.NAD,DSD_NAMAIN1@DF_QNA_POP_EMPNC,1.1/Q.Y.DNK+CRI...EMP.......?format=csv&startPeriod=1991-Q1&endPeriod=2024-Q4&dimensionAtObservation=AllDimensions")
+###############################################################################
+# Data cleaning and formatting
+# data1 <- data1 |> select(REF_AREA, TIME_PERIOD, OBS_VALUE,SECTOR,TRANSACTION)
+# 
+# data1 <- data1 |> mutate(category = ifelse(TRANSACTION == "B1GQ", "GDP",
+#                                          ifelse(TRANSACTION == "P51G","Investment",
+#                                                 ifelse(SECTOR == "S13", "Public_spending",
+#                                                        ifelse(SECTOR == "S1M", "Consumption",
+#                                                               ifelse(TRANSACTION == "P5","Investment",NA)))))) |>
+#   select(REF_AREA, TIME_PERIOD, OBS_VALUE,category)
+# 
+# data1 <- data1 |> filter(!is.na(category))
+# data2 <- data2 |> select(REF_AREA, TIME_PERIOD, OBS_VALUE) |> mutate(category = "Salaries")
+# data3 <- data3 |> select(REF_AREA, TIME_PERIOD, OBS_VALUE) |> mutate(category = "Employment")
+# 
+# # Formatting time variable
+# convert_roman_quarter <- function(roman_quarter) {
+#   roman_to_arabic <- c("I" = "1", "II" = "2", "III" = "3", "IV" = "4")
+#   parts <- strsplit(roman_quarter, " ")
+#   return(paste0(parts[[1]][2], "-Q", roman_to_arabic[parts[[1]][1]]))
+# }
+# 
+# # Employment data from Costa Rica
+# data4 <- read_csv("CRI_employment.csv",
+#                   col_types = cols(OBS_VALUE = col_double()))
+# 
+# data4$TIME_PERIOD <- sapply(data4$TIME_PERIOD, convert_roman_quarter)
+# data4$OBS_VALUE <- data4$OBS_VALUE/1000
+# 
+# # Function to adjust for seasonality
+# seasadj=function(x,year,number, freq, filename="SeasAdj Data.csv",m){
+#   if(freq=="quarterly"){
+#     xts=ts(x, start=c(year, number), frequency=4)
+#     sdat=seas(xts)
+#     sdy=sdat$data[,1]
+#     SAData=data.frame(list(as.numeric(x),as.numeric(sdy),m))
+#     colnames(SAData)=c("OBS_VALUE","OBS_VALUE_a","TIME_PERIOD")
+#     write.table(SAData, filename,na = "",row.names =FALSE,col.names = TRUE,append = FALSE,sep = ",")}
+#   if(freq=="monthly"){
+#     xts=ts(x, start=c(year, number), frequency=12)
+#     sdat=seas(xts)
+#     sdy=sdat$data[,1]
+#     SAData=data.frame(list(as.numeric(x),as.numeric(sdy),m))
+#     colnames(SAData)=c("OBS_VALUE","OBS_VALUE_a")
+#     write.table(SAData, filename ,na = "",row.names =FALSE,col.names = TRUE,append = FALSE,sep = ",")}}
+# 
+# seasadj(data4$OBS_VALUE,2010,3,"quarterly","CRI_employment_adjust.csv",data4$TIME_PERIOD)
+# 
+# data5 <- read_csv("CRI_employment_adjust.csv",
+#                   col_types = cols(OBS_VALUE = col_double(),OBS_VALUE_a = col_double() )) |> select(-OBS_VALUE)
+# 
+# data4 <- left_join(data5,data4)
+# 
+# data4 <- data4 |> select(-OBS_VALUE) |> rename(OBS_VALUE = OBS_VALUE_a)
+# 
+# data_1960 <- rbind(data1,data2,data3,data4)
+###############################################################################
+# fwrite(data_1960, "DNK_CRI_1960.csv")
+###############################################################################
+
+# # National currency
+# data1 <- fread("https://sdmx.oecd.org/public/rest/data/OECD.SDD.NAD,DSD_NAMAIN1@DF_QNA_EXPENDITURE_NATIO_CURR,1.1/Q.Y.DNK+CRI.S13+S1M+S1..P5+P3+B1GQ.......?format=csv&startPeriod=1960-Q1&endPeriod=2024-Q4&dimensionAtObservation=AllDimensions")
+# 
+# ###############################################################################
+# data1 <- data1 |> filter(PRICE_BASE == "V")
+# data1 <- data1 |> select(REF_AREA, TIME_PERIOD, OBS_VALUE,SECTOR,TRANSACTION)
+# 
+# data1 <- data1 |> mutate(category = ifelse(TRANSACTION == "B1GQ", "GDP",
+#                                          ifelse(TRANSACTION == "P51G","Investment",
+#                                                 ifelse(SECTOR == "S13", "Public_spending",
+#                                                        ifelse(SECTOR == "S1M", "Consumption",
+#                                                               ifelse(TRANSACTION == "P5","Investment",NA)))))) |>
+#   select(REF_AREA, TIME_PERIOD, OBS_VALUE,category)
+# 
+# 
+# data1 <- data1 |> filter(!is.na(category))
+# 
+# data_1990 <- rbind(data1,data2,data3,data4)
+
+###############################################################################
+# fwrite(data_1990, "DNK_CRI_1990.csv")
+###############################################################################
+
+#Read data 
+
+data_1960 <- fread("DNK_CRI_1960.csv")
+data_1990 <- fread("DNK_CRI_1990.csv")
+
+```
+
+## 1. Introduction
+
+From the Global Financial Crisis to the global COVID-19 recession, history has shown the importance of understanding business cycles for resilient economic policy making. Furthermore, a recent study by Georgarakos et al. (2025) shows that the perceived costs of business cycle volatility and inflation among households may be much higher than what has traditionally been estimated. In fact, they show that on average, households would be prepared to sacrifice around 5-6% of their lifetime consumption to eliminate business cycle fluctuations. Hence, business cycles have substantial effects on welfare, which drives the motivation behind this study.
+
+This report examines the business cycles of Costa Rica and Denmark, two countries that, despite differences in income levels and geographical location, share several macroeconomic characteristics. They are both small and open economies with strong democratic institutions, commitments to sustainability and aging populations.
+
+Costa Rica, being a typical upper middle-income economy, is characterized by higher output volatility, greater exposure to external shocks and relatively weaker macroeconomic policy tools to counteract fluctuations. Its economy relies heavily on trade, tourism, and foreign direct investment (FDI), making it particularly vulnerable to global economic shifts. In contrast, Denmark, as a high-income economy, benefits from older and stronger economic institutions. Furthermore, a high standard of living, low unemployment rates, and a strong social safety net contribute to Denmark’s economic resilience and consumer stability. **Figure 1** compares the two countries of the analysis in terms of GDP.
+
+```{r, fig.width=7, fig.height=4}
+options(scipen=999)
+# ################################################################################
+# Applying the HP filter
+countries <- unique(data_1960$REF_AREA)
+
+data_1960$TIME_PERIOD <- as.yearqtr(data_1960$TIME_PERIOD, format = "%Y-Q%q")
+
+hp <- data.frame()
+for (n in countries) {
+  base <- data_1960 |> filter(REF_AREA == n)
+  variables <- unique(base$category)
+  for (i in variables) {
+    base1 <- base |> filter(category == i)
+    
+    df_xts <- xts(base1, order.by = base1$TIME_PERIOD)
+    df_xts <- df_xts[, !colnames(df_xts) %in% c("REF_AREA", "TIME_PERIOD","category","SECTOR","TRANSACTION")]
+    storage.mode(df_xts) <- "numeric"
+    hpf <- hpfilter(log(df_xts), freq = 1600)
+    
+    
+    out <- xts(cbind(hpf$x, hpf$trend, hpf$cycle), index(df_xts))
+    colnames(out) <- c("x", "trend", "cycle")
+    
+    out <- data.frame(index(out), coredata(out))
+    out$country <- n
+    out$variable <- i
+    
+    hp <- rbind(hp,out)
+  }
+}
+
+hp_1960 <- hp
+
+hp_ <- hp_1960 |> mutate(country = case_when(country == "CRI" ~ "Costa Rica",
+                                        country == "DNK" ~ "Denmark", 
+                                        TRUE ~ NA_character_))
+
+hp_ <- hp_ |> mutate(variable = ifelse(variable == "Public_spending", "Public spending",variable))
+
+ggplot(hp_ |> filter(variable == "GDP"), aes(x = index.out., y = exp(x))) +
+  geom_line(data = hp_ |> filter(variable == "GDP"), aes(x = index.out., y = exp(x), color = country),size = 1.3) +
+  #geom_line(data = hp_ |> filter(variable == "GDP"), aes(x = index.out., y = exp(trend), color = "Trend"), size = 0.5, alpha = 1.2) +
+  #facet_wrap(~country, nrow = 2, scales = "free_x") + 
+  labs(
+    title = "Figure 1. Quarterly GDP: Costa Rica and Denmark",
+    subtitle = "Expenditure approach",
+    x = NULL, 
+    y = "Millions of USD",
+    caption = "Source: Own elaboration with data from OECD. (2025).") +
+  theme_bw() +
+  scale_x_continuous(breaks = scales::pretty_breaks(n = 20)) +
+  theme(
+    panel.border = element_rect(color = "black", fill = NA), 
+    legend.position = "bottom", 
+    legend.title = element_blank(),
+    plot.caption=element_text(hjust = 0)) +
+  scale_color_manual(values = c("Costa Rica" = "blue","Denmark" = "red", "Public spending" = "darkgrey"))
+```
+
+Studying and comparing the business cycles of Costa Rica and Denmark provides valuable insights into how different income-level nations respond to economic shocks. Moreover, doing a comparative analysis allows us to understand differences in monetary and fiscal policy strategies and investigate how each nation responds to economic cycles.
+
+The aim of our paper is to answer three central questions: 1- What are the main characteristics of business cycles in Costa Rica and Denmark and how do they compare in terms of volatility, persistence, and co-movement with GDP? 2- What historical, political and economic events have shaped the business cycles in the two countries throughout time? 3- How do the policy recommendations for Costa Rica and Denmark differ, given their distinct economic structures?
+
+To address these questions, we will use data from the OECD (2025) and from Costa Rica’s National Statistics Office (INEC, 2025), and apply the Hodrick-Prescott (HP) filter to decompose the time series into trend and cyclical components. We then conduct a second-moment analysis to evaluate and compare volatility, correlation, and persistence. Through a historical analysis, we will then examine the role of economic policies, external shocks, and institutional factors in shaping business cycle dynamics in both countries. Finally, based on our findings, we dive into possible policy recommendations for both countries.
+
+## 2. Data and methodology
+
+### Data sources
+
+This report analyzes the following macroeconomic series for Costa Rica and Denmark: GDP, consumption, investment, employment, and public spending. Additionally, salaries are analyzed only for Denmark, as data constraints prevent an analysis of salaries for Costa Rica. The data sources for each series are detailed in **Table 1**.
+
+```{r}
+sources <- data.frame(
+  Series = c("GDP", 
+             "GDP, consumption, investment and public spending",
+             "Employment", 
+             "Employment", 
+             "Salaries"),
+  `Source` = c("OECD database: Quarterly GDP and components - expenditure approach, USD", 
+               "OECD database: Quarterly GDP and components - expenditure approach, national currency", 
+                  "OECD database: Quarterly population and employment, national concept", 
+                  "Costa Rica national statistics office database: Continuous Survey of Employment", 
+                  "OECD database: Quarterly compensation of employees by economic activity, national currency"),
+  `Countries` = c("Denmark and Costa Rica", 
+                  "Denmark and Costa Rica", 
+                        "Denmark", 
+                        "Costa Rica", 
+                        "Denmark"),
+  `Period` = c("Denmark: 1960 Q1-2024 Q3 & Costa Rica: 1990 Q1-2024 Q4", 
+               "Denmark: 1990 Q1-2024 Q4 & Costa Rica: 1990 Q1-2024 Q4", 
+                            "1991 Q1-2024 Q4", 
+                            "2010 Q3-2024 Q4", 
+                            "1991 Q1-2024 Q4")
+)
+
+sources |>
+  kable(digits = 2, caption = "Data used in this study") |>
+  kable_styling(latex_options = c("hold_position","striped"),
+    full_width = F) |>
+  column_spec(1, width = "10em") |> 
+  column_spec(2, width = "12em") |> 
+  column_spec(3, width = "7.5em") |> 
+  column_spec(4, width = "10em") |> 
+  footnote(
+    general = "Note: Links to the datasets are available in the references section.",
+    general_title = ""
+  )
+```
+
+All data used in this report is quarterly. In the data extracted for this analysis the variables of interest are defined as: **consumption** is the final consumption expenditure of households and non-profit institutions serving households, **public spending** corresponds to final consumption expenditure of the General Government, and **investment** is the gross fixed capital formation. The **employment** data represents the number of people employed. **Salaries** data correspond to wages in national currency. For Denmark, the employment and salaries data used are seasonally adjusted series. In contrast, for Costa Rica, the employment data is originally not seasonally adjusted, but it has been adjusted in this report to remove seasonal variations. This adjustment helps to better identify underlying trends and patterns in Costa Rican employment.
+
+Quarterly data is crucial for macroeconomic analysis as it provides more frequent observations, allowing for a more detailed and timely understanding of economic fluctuations. Analyzing data on a quarterly basis helps to capture short-term changes, providing insights into the dynamics of economic variables that may not be apparent in annual data.
+
+### Methodology
+
+In this analysis, we focus on decomposing time series data to examine the cyclical behavior of selected economic variables across Denmark and Costa Rica. For each country, the data is filtered by economic variable, and a time series object is created using the quarterly time periods. The Hodrick-Prescott (HP) filter is then applied to decompose each time series into its trend and cycle components; the **box below** provides an explanation on the filter.
+
+\begin{definitionbox}
+Definition 1. \textbf{The Hodrick-Prescott (HP) Filter} (Monahov, 2023)
+\vspace{5pt} 
+\hrule 
+\vspace{5pt} 
+The Hodrick-Prescott filter is a technique commonly used to smooth macroeconomic data such as GDP. It consists of separating short-term, cyclical movements in the data from the long-term trend. Although the HP filter has received numerous critiques, recent studies show that alternative methods do not necessarily perform better. Furthermore, the Basel Committee, an international body responsible for setting international guidelines for prudential regulation, has recommended the usage of the one-sided HP filter for calculations pertaining to the analysis of financial cycles.
+\end{definitionbox}
+
+Once the series are detrended, several statistical indicators are calculated from the cycle component. These include the volatility of the cycle, measured as the standard deviation; the correlation between the cycle and GDP; the autocorrelation of the cycle, which measures the relationship between the cycle and its lagged values; and the relative volatility of the cycle in relation to GDP. These indicators are computed for each country and economic variable, providing insights into the cyclical dynamics of the data.
+
+Finally, the results are compiled into a summary table (**Table 2**) that presents each indicator, facilitating a comparison of the cyclical behavior across Costa Rica and Denmark and economic variables from 1990 to 2024. This methodology enables an understanding of macroeconomic cycles and their fluctuations, offering insights into the stability and relationships between key economic variables. Following the second-moments, an analysis is conducted to provide historical context for the observed data (Section 4 of this report).
+
+#### National currency or USD converted series?
+
+Quarterly GDP, consumption, investment, and public spending in national currency are available in our source for both countries from 1990 to 2024. In contrast, these series are available in USD for Denmark from 1960 to 2024, providing 30 more years of data. For the second-moment analysis, we use national currency data, as it preserves the true volatility and dynamics of a country’s economy without distortions from exchange rate fluctuations. Since domestic economic agents—households, firms, and policymakers—operate within the national currency framework, analyzing fluctuations in local terms offers a more accurate representation of their experiences.
+
+For the historical perspective section (Section 4), we use GDP data in USD. This allows us to leverage Denmark’s longer data period. Accordingly, we also analyze Costa Rica’s GDP in USD in Section 4.
+
+## 3. Empirical Results
+
+**Table 2** provides a detailed comparison of the second moments of macroeconomic series for Denmark and Costa Rica from 1990 to 2024. Costa Rica generally exhibits higher volatility across most variables compared to Denmark. For instance, consumption volatility in Costa Rica is 3.01, compared to Denmark’s 1.68. Moreover, Costa Rica’s GDP is more volatile than Denmark’s during the study period (2.54 vs. 1.99). This suggests that Costa Rica’s economy is more susceptible to fluctuations, potentially due to factors such as a less diversified economic structure, greater exposure to external shocks, or a less stable policy environment. In contrast, Denmark’s lower volatility reflects a more stable and mature economy, likely supported by stronger institutions and more effective economic policies.
+
+Another notable difference lies in the volatility of employment between the two countries. In Denmark, employment volatility is 1.01, while in Costa Rica, it reaches 4.09. This disparity reveals that Costa Rica experiences much larger adjustments in employment levels, likely reflecting a labor market that is more sensitive to economic fluctuations. Such high volatility may indicate less job stability, weaker labor market protections, or a greater reliance on informal employment. In contrast, Denmark’s lower employment volatility suggests a more stable labor market, supported by social safety nets that mitigate the impact of economic shocks.
+
+Similar results emerge when analyzing the volatility of various macroeconomic series relative to GDP. Costa Rica consistently exhibits higher relative volatility compared to Denmark across most variables. For instance, the relative volatility of consumption to GDP is 1.19 in Costa Rica, whereas in Denmark, it is 0.85. This disparity suggests that economic conditions in Costa Rica may limit individuals' ability to smooth consumption during economic shocks. Contributing factors could include lower savings levels, smaller salaries, and a relatively high cost of living, all of which constrain disposable income and hinder long-term financial planning.
+
+```{r}
+
+countries <- unique(data_1990$REF_AREA)
+
+data_1990$TIME_PERIOD <- as.yearqtr(data_1990$TIME_PERIOD, format = "%Y-Q%q")
+
+hp <- data.frame()
+for (n in countries) {
+  base <- data_1990 |> filter(REF_AREA == n)
+  variables <- unique(base$category)
+  for (i in variables) {
+    base1 <- base |> filter(category == i)
+    
+    df_xts <- xts(base1, order.by = base1$TIME_PERIOD)
+    df_xts <- df_xts[, !colnames(df_xts) %in% c("REF_AREA", "TIME_PERIOD","category","SECTOR","TRANSACTION")]
+    storage.mode(df_xts) <- "numeric"
+    hpf <- hpfilter(log(df_xts), freq = 1600)
+    
+    
+    out <- xts(cbind(hpf$x, hpf$trend, hpf$cycle), index(df_xts))
+    colnames(out) <- c("x", "trend", "cycle")
+    
+    out <- data.frame(index(out), coredata(out))
+    out$country <- n
+    out$variable <- i
+    
+    hp <- rbind(hp,out)
+  }
+}
+
+lag <- hp |> mutate(lag = lag(cycle)) |> select(c(index.out.,lag,country,variable))
+GPD <- hp |> filter(variable == "GDP") |> mutate(GDP = cycle) |> select(c(index.out.,GDP,country))
+volat <- hp |> summarise(value  = 100 * sd(cycle, na.rm = TRUE), .by = c(country,variable)) |> mutate(indicator = "Volatility")
+correlation <- hp |> left_join(GPD) |>  summarise(value  = cor(cycle,GDP, use = "complete.obs"), .by = c(country,variable)) |> mutate(indicator = "correlation")
+autocorrelation <- hp |> left_join(lag) |>  summarise(value  = cor(cycle,lag, use = "complete.obs"), .by = c(country,variable)) |> mutate(indicator = "autocorrelation")
+relat_GPD <- hp |> left_join(GPD) |>  summarise(value  = sd(cycle, na.rm = TRUE)/sd(GDP, na.rm = TRUE), .by = c(country,variable)) |> mutate(indicator = "relative_vol_GDP")
+
+table <- rbind(volat,relat_GPD,correlation,autocorrelation)
+
+table <- table |>
+  pivot_wider(names_from = indicator, values_from = value)
+
+table <- table |>
+  arrange(variable)  # Order the table by the 'variable' column
+
+table <- table |>
+  mutate(country = case_when(
+    country == "DNK" ~ "Denmark", 
+    country == "CRI" ~ "Costa Rica",
+    TRUE ~ NA_character_))
+
+table <- table |>
+  mutate(variable = ifelse(variable  == "Public_spending","Public spending",variable))
+
+bold_rows <- which(table$variable == "GDP")
+
+# Now create the table
+table |>
+  kable(
+    digits = 2,
+    caption = "Seconds moments: Costa Rica and Denmark 1990 - 2024",
+    col.names = c("Country", "Variable", "Volatility", "Relative volatility to GDP", "Correlation with GDP", "Autocorrelation"),
+    align=rep("lccccc")) |>
+  kable_styling(
+    latex_options = c("hold_position", "striped","scale_down"),
+    full_width = F)  |>
+  column_spec(1, width = "6em") |> 
+  column_spec(2, width = "7em") |> 
+  column_spec(3, width = "5em") |> 
+  column_spec(4, width = "8em") |> 
+  column_spec(5, width = "5em") |> 
+  column_spec(6, width = "5em") |> 
+  row_spec(bold_rows, bold = TRUE) 
+```
+
+Costa Rica generally exhibits a higher correlation between GDP and most macroeconomic variables compared to Denmark. For instance, the correlation between consumption and GDP is 0.80 in Costa Rica, compared to 0.69 in Denmark. However, public spending shows an opposite relationship with GDP in the two countries. In Denmark, public spending is positively correlated with GDP (0.04), whereas in Costa Rica, the correlation is slightly negative (-0.09). **Figure 2** illustrates these relationships.
+
+The positive correlation in Denmark may seem unexpected, as government expenditures in most developed countries tend to be countercyclical. However, this can vary depending on a country’s economic philosophy; Statistics Denmark’s Annual Danish Aggregate Model (ADAM) finds that Denmark’s government budget balance is procyclical (ADAM, n.d.). One explanation for this pattern is the strong indexation of public expenditures to price and wage developments. As Hansen and Danmarks Nationalbank (2012) note, during periods of economic expansion, rising economic activity leads to higher prices, triggering automatic increases in public expenditures such as pensions and government consumption. This contributes to the observed positive correlation. However, as Hansen’s *Cyclicality of the Danish Government Budget* highlights, these public expenditures tend to rise only after a few years, in parallel with price and wage increases, creating a lag that is also visible in **Figure 2**. Moreover, since the correlation is only slightly positive, Denmark’s public spending is effectively close to acyclical. Despite the procyclical effects of expenditure indexation, Denmark also employs automatic stabilizers and other policy instruments to help smooth economic fluctuations during booms and downturns.
+
+In contrast, Costa Rica’s negative correlation between public spending and GDP suggests countercyclical fiscal behavior, where government expenditures adjust to offset economic fluctuations. This approach can help mitigate economic volatility. According to Eurostat (2025), countercyclical fiscal measures involve policy actions designed to counteract the economic cycle. For example, during an economic downturn, a government may increase spending or cut taxes to stimulate recovery.
+
+```{r, fig.width=8, fig.height=5}
+options(scipen=999)
+
+hp_ <- hp |> mutate(country = case_when(country == "CRI" ~ "Costa Rica",
+                                        country == "DNK" ~ "Denmark", 
+                                        TRUE ~ NA_character_))
+
+hp_ <- hp_ |> mutate(variable = ifelse(variable == "Public_spending", "Public spending",variable))
+
+ggplot(hp_ |> filter(variable == "GDP"), aes(x = index.out., y = cycle)) +
+  geom_line(data = hp_ |> filter(variable == "GDP"), aes(x = index.out., y = cycle, color = "GDP")) +
+  geom_line(data = hp_ |> filter(variable == "Public spending"), aes(x = index.out., y = cycle, color = "Public spending"), size = 0.5, alpha = 1.2) +
+  facet_wrap(~country, nrow = 2, scales = "free_x") + 
+  labs(
+    title = "Figure 2. Cyclical component: GDP and public expenditure",
+    x = NULL, 
+    y = NULL,
+    caption = "Source: Own elaboration with data from OECD. (2025).") +
+  theme_bw() +
+  scale_x_continuous(breaks = scales::pretty_breaks(n = 20)) +
+  theme(
+    panel.border = element_rect(color = "black", fill = NA), 
+    legend.position = "bottom", 
+    legend.title = element_blank(),
+    plot.caption=element_text(hjust = 0)) +
+  scale_color_manual(values = c("GDP" = "black", "Public spending" = "darkgrey"))
+```
+
+In terms of persistence over time, autocorrelation values are generally high for both countries, indicating that the series exhibit persistence. However, Denmark shows slightly higher autocorrelation for certain variables, such as employment (0.85) and GDP (0.75), compared to Costa Rica (0.58 and 0.62, respectively). This suggests that Denmark experiences more stable, long-term trends. In contrast, Costa Rica’s slightly lower autocorrelation values imply that its economic variables may be more subject to short-term fluctuations, possibly due to less stable policy environments or greater external dependencies.
+
+In summary, the results highlight differences between Denmark and Costa Rica in terms of macroeconomic stability. Denmark’s economy appears more stable, with lower volatility and moderate correlation with GDP. In contrast, Costa Rica’s economy is more susceptible to fluctuations, with higher volatility and stronger correlation with GDP. These insights can inform policy decisions aimed at enhancing economic resilience and stability in both countries, with Denmark potentially serving as a model for achieving long-term economic stability and Costa Rica potentially benefiting from targeted policies to stabilize key components and reduce external vulnerabilities.
+
+## 4. Historical Perspective
+
+### Costa Rica: trends and cycles in a upper middle-income economy
+
+Costa Rica’s economic history from 1990 to 2024 reflects a dynamic interplay of growth and challenges, shaped by neoliberal reforms, external shocks, and social tensions. Periods of expansion, such as the late 1990s high-tech boom driven by Intel and the post-CAFTA-DR trade diversification, were marked by significant GDP growth and increased foreign investment. However, these gains were periodically disrupted by crises, including the 2008 global recession, Intel’s 2014 manufacturing plant closure, and the fiscal challenges and social unrest of the late 2010s. **Figure 3** shows the cycle component of Costa Rica’s GDP from 1990 to 2024. Despite setbacks, Costa Rica demonstrated resilience, particularly during the COVID-19 pandemic, leveraging its strong institutions and commitment to fiscal discipline to maintain economic stability and sustainable growth.
+
+```{r, fig.width=7, fig.height=4}
+options(scipen=999)
+
+hp_cri <- hp_1960 |> filter(country == "CRI")
+
+gdp_limits <- hp_cri |> filter(variable == "GDP") |> summarize(min = min(cycle), max = max(cycle))
+
+recessions_cr <- data.frame(
+  start = as.yearqtr(c("1995-Q3", "2008-Q1", "2014-Q2", "2016-Q4", "2019-Q2"), format = "%Y-Q%q"),
+  end   = as.yearqtr(c("1997-Q1", "2009-Q2", "2015-Q1", "2017-Q3", "2021-Q1"), format = "%Y-Q%q")
+)
+
+labels_cr <- data.frame(
+  x = as.yearqtr(c("1996-Q2", "2008-Q4", "2014-Q4", "2017-Q1", "2020-Q2"),format = "%Y-Q%q"), 
+  y = -0.05, 
+  label = c("(a)", "(b)", "(c)", "(d)", "(e)"))
+
+# Plot
+ggplot(hp_cri, aes(x = index.out., y = cycle, group = variable)) +
+  geom_line(data = hp_cri |> filter(variable == "GDP"), aes(color = "GDP"), size = 1,alpha = 1) +
+  geom_rect(data = recessions_cr, aes(xmin = start, xmax = end, ymin = -Inf, ymax = Inf),
+  fill = "blue", alpha = 0.2, inherit.aes = FALSE) +
+  geom_text(data = labels_cr, aes(x = x, y = y, label = label), 
+            vjust = 2, color = "black", size = 5, inherit.aes = FALSE) +
+  labs(
+    title = "Figure 3. Costa Rica: cycle component of GDP",
+    x = NULL, 
+    y = NULL,
+       caption = "Note: Data in USD. \nShaded areas correspond to the following events: (a) Hurricane Cesar, (b) Global recession, (c) Intel's plant closure,\n(d) Tax reform protests, and (e) COVID-19 pandemic. \nSource: Own elaboration with data from OECD. (2025).") +
+  scale_color_manual(
+    name = "Variable", 
+    values = c("Public_spending" = "grey", "GDP" = "blue")) +
+  theme_bw() +
+  scale_x_continuous(breaks = scales::pretty_breaks(n = 20)) +
+  theme(
+    panel.border = element_rect(color = "black", fill = NA), 
+    legend.position = "bottom", 
+    legend.title = element_blank(),
+    plot.caption=element_text(hjust = 0))
+```
+
+The early 1990s marked the beginning of neoliberal reforms under President Rafael Angel Calderón Fournier, who shifted from social welfare promises to austerity measures and privatization in response to a substantial budget deficit. These reforms included dismantling protectionist legislation, privatizing state agencies, and attracting foreign investment, supported by lower petroleum prices and regional peace. However, declining global markets for traditional agricultural exports posed significant challenges (Stansifer & Karnes, 2023). The subsequent administration of José María Figueres Olsen (1994-1998) continued this fiscal austerity, introducing tax increases and public pension reforms. While these measures reduced inflation and the deficit as a percentage of GDP, the economy faced setbacks from Hurricane Cesar in 1996, which caused widespread damage and exacerbated economic difficulties (Stansifer & Karnes, 2023).
+
+By the late 1990s, under President Miguel Angel Rodriguez (1998-2002), Costa Rica’s economy rebounded, driven by the growth of the tourism sector and increased foreign investment in high-tech industries (Stansifer & Karnes, 2023). This period saw the transformative arrival of Intel in 1996, whose \$300 million assembly and test plant significantly boosted GDP, accounting for over 60% of GDP growth in 1999 alone (World Bank Group, 2006). By the early 2000s, high-tech exports constituted 25% of total exports, and tourism represented 16%, showcasing the success of Costa Rica’s outward-oriented policies (Carstens, 2004).
+
+From 2002 to 2006, Abel Pacheco de la Espriella served as president. His administration faced significant challenges, including a slim majority in the Legislative Assembly, which hindered the approval of key government projects. Despite these obstacles, Pacheco managed to reduce the fiscal deficit from -4.3% in 2002 to -1.1% in 2006, achieving a primary surplus of 2.7% of GDP by the end of his term. The economy grew at an average rate of 4.5% during his presidency, close to the ambitious 6% target he had set. However, this growth came with downsides, including inflation exceeding 10% annually and stagnant government revenue from taxes. Pacheco’s administration also made progress on the U.S.-Central America Free Trade Agreement (CAFTA-DR), though its full ratification was achieved after his term (CIDOB, 2025). The ratification of CAFTA-DR in 2007 further deepened economic integration, making the United States Costa Rica’s principal trading partner and largest source of foreign direct investment (COMEX, 2025). However, the global economic slowdown in 2009, triggered by the U.S. recession, significantly impacted Costa Rica, leading to a 1.2% GDP contraction, rising unemployment, and reduced FDI (ECLAC, 2009). The 2010s highlighted Costa Rica’s vulnerability to external shocks due to its sector-specific dependency, exemplified by Intel’s closure of its manufacturing plant in 2014, which dealt a significant blow to the economy (Cárdenas, 2014). However, Intel’s return in 2020 with a \$350 million investment reaffirmed Costa Rica’s appeal as a high-tech hub (Barquero, 2020). By the late 2010s, fiscal challenges emerged, with the central government deficit averaging 5% of GDP and public debt rising to 52% in 2018. The government responded with the *Ley de Fortalecimiento de las Finanzas Públicas* (Law to Strengthen Public Finances) in 2018, introducing a VAT, progressive income tax brackets, and spending controls. While these reforms reduced the primary deficit to its lowest level in a decade by 2020 (Ardanaz, Barreix, & Pineda, 2021), they sparked widespread protests, particularly from public sector unions, disrupting health and education services (Mora Solano, 2021).
+
+From 2020 to 2024, Costa Rica faced the dual challenges of the COVID-19 pandemic and global economic uncertainty. The COVID-19 pandemic severely impacted Costa Rica’s economy, causing a 4.1% GDP contraction in 2020, a surge in unemployment to 24%, and an increase in poverty to around 23%. Under President Carlos Alvarado Quesada (2018–2022), the government implemented temporary social policies, such as the *Plan Proteger* (Protection Plan), a cash transfer program that provided financial aid to those affected by income loss. Health coverage was also temporarily extended to all COVID-19 patients, regardless of insurance status, and measures were taken to reduce public health insurance contributions. However, these initiatives were short-lived, and by 2021, austerity measures began to dominate, driven by a growing fiscal deficit and a \$1.775 billion agreement with the IMF aimed at reducing public debt (Voorend & Alvarado Abarca, 2023).
+
+By 2022, under President Rodrigo Chaves, Costa Rica’s fiscal deficit had decreased to 1.9%, largely due to austerity measures that cut public spending. Social spending fell to a historic low of 9.8% of GDP by 2023, with health investment dropping to 0.7% of GDP, the lowest in a decade. The Global Wage policy, enacted in 2022, froze public wages and eliminated bonuses, raising concerns about a brain drain of skilled professionals from the public sector (Voorend & Alvarado Abarca, 2023). Despite these difficulties, the country’s strong institutions and commitment to fiscal discipline have shown to help stabilize the economy. The high-tech sector, tourism, and renewable energy investments continued to drive growth, reinforcing Costa Rica’s position as a regional leader in sustainable development and economic resilience. This period underscored the country’s ability to adapt to external shocks while maintaining a focus on long-term economic diversification and stability.
+
+### Denmark: trends and cycles in a mature economy
+
+While a small open economy like Denmark's is affected by its most important trading partners, past experience shows that major shifts in fundamental economic policy have significant consequences for the cyclical fluctuations in the economy. (Dam, 2008) This section will analyze the drivers of the Danish business cycles, depicted in **Figure 4**, from the 1960’s until 2024.
+
+```{r, fig.width=7, fig.height=4}
+options(scipen=999)
+
+hp_cri <- hp_1960 |> filter(country == "DNK")
+
+gdp_limits <- hp_cri |> filter(variable == "GDP") |> summarize(min = min(cycle), max = max(cycle))
+
+hp_cri<- hp_cri |> mutate(cycle =ifelse(cycle <  gdp_limits$min,gdp_limits$min,
+                                        ifelse(cycle > gdp_limits$max,gdp_limits$max,cycle)))
+
+recessions_dnk <- data.frame(
+  start = as.yearqtr(c("1973-Q2", "1986-Q1", "2000-Q3", "2008-Q2", "2019-Q4", "2022-Q3"), format = "%Y-Q%q"),
+  end   = as.yearqtr(c("1982-Q1", "1993-Q1", "2003-Q3", "2014-Q3", "2021-Q1", "2024-Q1"), format = "%Y-Q%q"))
+
+recessions_dnk_lines <- data.frame(
+  index.out.= as.yearqtr(c("1960-Q2","1973-Q2", "1986-Q1", "2000-Q3", "2008-Q3", "2019-Q4","1982-Q1", "1993-Q3", "2003-Q3", "2014-Q3","2021-Q1","2022-Q3","2024-Q1","2024-Q3"), format = "%Y-Q%q"))
+
+labels_dnk <- data.frame(
+  x = as.yearqtr(c("1977-Q2", "1989-Q3", "2002-Q1", "2011-Q2", "2020-Q2", "2023-Q2"),format = "%Y-Q%q"), 
+  y = -0.05, 
+  label = c("(a)", "(b)", "(c)", "(d)", "(e)","(f)"))
+
+recessions_dnk_lines <- left_join(recessions_dnk_lines, hp_cri |> filter(variable == "GDP"))
+
+# Plot
+ggplot(hp_cri, aes(x = index.out., y = cycle, group = variable)) +
+  geom_line(data = hp_cri |> filter(variable == "GDP"), aes(color = "GDP"), size = 1, alpha = 1) +
+  geom_line(data = recessions_dnk_lines |> filter(variable == "GDP"), 
+            aes(linetype = "Trend"), size = 0.5, alpha = 1) +
+  geom_rect(data = recessions_dnk, aes(xmin = start, xmax = end, ymin = -Inf, ymax = Inf),
+            fill = "red", alpha = 0.2, inherit.aes = FALSE) +
+    geom_text(data = labels_dnk, aes(x = x, y = y, label = label), 
+            vjust = 2, color = "black", size = 5, inherit.aes = FALSE) +
+  labs(
+    title = "Figure 4. Denmark: cycle component of GDP",
+    x = NULL, 
+    y = NULL,
+ caption = "Note: Data in USD.\nThe black dotted line in the image represents a piecewise linear trend, connecting local peaks and troughs at the \nbeginning and end of each business cycle period in Denmark's GDP cycle component.\nShaded areas correspond to the following events: (a) 1973 oil crisis, (b) “Potato cure”, (c) IT bubble,\n(d) Global Financial Crisis, (e) COVID-19 pandemic, and (f) Energy crisis and war in Ukraine.\nSource: Own elaboration with data from OECD. (2025).")+
+  scale_color_manual(
+    name = "Variable", 
+    values = c("GDP" = "red")) +
+  scale_linetype_manual(
+    name = "Variable", 
+    values = c("Trend" = 2)) +  # Linetype 2 corresponds to dashed lines
+  theme_bw() +
+  scale_x_continuous(breaks = scales::pretty_breaks(n = 26)) +
+  theme(
+    panel.border = element_rect(color = "black", fill = NA), 
+    legend.position = "bottom", 
+    legend.title = element_blank(),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    plot.caption = element_text(hjust = 0)
+  )
+```
+
+#### Economic events affecting business cycles
+
+In the 1960s, Denmark experienced strong economic growth. The Danish society moved from an agricultural and industrial society to a modern service and welfare society. Consumers could afford luxury goods such as cars, televisions and charter holidays, while the welfare state expanded with an increased public sector and more social services. These were much needed, as women entered the labour market in earnest, increasing the need for childcare and public institutions. (Aarhus University, n.d.)
+
+In the 1970s, the economy changed significantly, especially after the 1973 oil crisis that led to inflation, followed by recession. The service industries in the private sector struggled as businesses had to adapt to higher energy prices, but the government, led by Anker Jørgensen, responded by expanding public sector employment to counteract rising unemployment. In fact, employment in the public sector went from 8% in 1950 to 23.6% in 1975 and public spending increased from 12% of GDP in 1948 to 21.6% in 1973, reinforcing automatic stabilizers that helped mitigate business cycle volatility. However, business cycle fluctuations remained severe, with weak recoveries and recurrent slowdowns throughout the late 1970s. These slowdowns weren’t only the consequences of the oil crisis, but also a result of the large wage increases in the 1960’s. An additional cause was Denmark's balance of payments that weakened as imports had grown faster than exports for an extended period, leading to deficits. (Aarhus University, n.d.) Finally, the deficit in the private sector was exacerbated by a distortionary tax system that provided high tax deductions on interest expenses, which had increased the incentive to take on debt. The cost for firms increased as interest rates became higher, due to the inflation and repeated devaluations. In the period 1975-1982, long-term interest rates in Denmark averaged 18 per cent compared to 11 per cent in the later euro countries (Dam, 2008).
+
+When Danish Prime Minister Anker Jørgensen resigned on 2 September 1982, a new government was formed by four centre-right parties with Poul Schlüter as Prime Minister. To restore the economy, the government launched a so-called recovery policy with a focus on improving Denmark's competitiveness. The government believed that this would result in increased production and thus improved employment. This would then reduce public deficits, ensure repayment of foreign debt and curb inflation. One of the most significant measures was the suspension and abolishment of the automatic cost-of-living adjustment, which compensated employees for price increases but also contributed to inflation. Another key measure in the recovery policy was the introduction of a fixed exchange rate policy to restore confidence in the Danish krone after repeated devaluations in the 1970s. (Aarhus University, n.d.) Overall, fiscal policy was tightened, including the introduction of the real interest tax on pension savings. The shift in economic policy created credibility for the fixed exchange rate against the D-mark, which reduced inflation expectations. This resulted in significant decreases in interest rates and inflation in the years 1982-1985. The overall policy shift had an expansionary effect on the economy, especially due to a decrease in real after-tax interest rates, which led to a boom in the housing market. Rising house prices increased household wealth and fuelled domestic demand and economic activity. This resulted in high wage increases and the balance of payments deficit continued to grow, leading to a shift in economic policy in 1986. (Dam, 2008).
+
+These developments led to the so-called “potato cure” in 1986 and the tax reform in 1987, the latter of which significantly reduced the deductibility of interest expenses and thus contributed to a significant increase in real interest rates after tax. This contributed to a significant decline in the housing market and a slowdown in private consumption, which led to a rapid economic downturn. The recession of the late 1980s was exacerbated in the early 1990s by the high interest rates that followed German reunification. (Dam, 2008) During the 1987 to 1993 recession, also known as the “seven lean years”, unemployment rose to over 13%, with the total number of unemployed reaching 280,000, the highest level in modern Danish history. (Aarhus Universitet, n.d.; Konjunktur, n.d.)
+
+In 1993, the government changed and a broad coalition including both centre-left and centre-right parties introduced a more expansive fiscal policy and Denmark experienced a boom from 1994 to 2000. Strong growth in neighbouring countries, low Danish inflation and moderate wage growth led to a sharp increase in exports, especially to Germany. At the same time, imports fell due to weak Danish demand. This resulted in a significant improvement in the balance of payments in the late 1980s, and in 1990, Denmark achieved a balance of payments surplus of DKK 10 billion for the first time in over 30 years (Aarhus University, n.d.). The new government also made it easier to take out loans secured by real estate, which many took advantage of. It also passed a new tax reform, which was underfunded in the early years and stimulated the economy. This led to an improvement in the business cycle, which ‘broke’ the unemployment curve. (Andersen et al., 2017) At the same time, the labour market policy became more active: from 1994, greater emphasis was placed on active job search, the unemployment benefit period was greatly shortened and rules were tightened considerably, especially for young people. (Isaksen et Al., 2012)
+
+In 2000, the Danish IT bubble burst, leading to a significant decline in exports and business investments. This event resulted in a recession where the gross domestic product (GDP) grew less than production capacity. This indicates that the economy was not utilising its full resources efficiently, which is typical of a recession. Unemployment rose and economic uncertainty affected consumer confidence and spending. Low interest rates, which had contributed to the bubble, remained low, but also led to the risk of new bubbles, as was later the case with the housing market. (Jensen et al., n.d.)
+
+Between 2004 and 2007, Denmark experienced a significant economic recovery, driven by low interest rates and rising house prices, which stimulated both consumption and investment. Moreover, large revenues generated from taxing the North Sea oil and gas extraction along with other cyclical revenue gains, tempted the government to conduct a more relaxed fiscal policy. The expansive fiscal policy, including unfunded tax cuts and public expenditure growth above limits, led to increased aggregate demand, low unemployment and rising employment, further strengthening economic activity. However, the strong growth and overheating of the housing market resulted in a general economic overheating, exacerbated by weakened productivity growth and rising wages, which undermined Denmark's competitiveness. (Sørensen, 2009)
+
+The 2008 financial crisis in Denmark was a consequence of a general overheating of the economy, characterised by artificially high house prices and widespread expectations of sustained price increases. The crisis was triggered by turbulence in the global financial markets, primarily caused by the collapse of the US housing market, resulting in falling stock prices and increased uncertainty in the banking system. The Danish economy was already in a slowdown phase, but the financial crisis accelerated the downturn through rising unemployment, falling house prices and a significant increase in bankruptcies. Bank loan losses grew significantly, leading 62 banks to cease operations. Despite the severe consequences, Denmark managed to navigate the crisis relatively better than many other economies, which can be attributed to a strong institutional framework and a quick policy response. (Hvad Skete Der Under Finanskrisen?, n.d.) Yet, after the 2008 financial crisis, Denmark experienced a prolonged recession, with GDP falling in the early years and only returning to pre-crisis levels around 2014. Employment fell and unemployment remained higher than before the crisis, although there was a gradual increase in the labour force. Many young people chose to pursue education instead of entering the labour market. Exports grew, but the economy recovered more slowly than after previous recessions, emphasising the severe and long-lasting impact of the crisis. (Drescher et al., 2018)
+
+The years from 2014 to 2019 were characterized with a continuous period of relatively solid growth, with 2.4% on average. In comparison, the average growth since the turn of the millennium had been 1.2%. (Fakta Om Dansk Økonomi, 2019). Denmark experienced a gradual economic recovery after the financial crisis and the European sovereign debt crisis. Low inflation and low to negative interest rates created favourable conditions for growth, but growth was relatively moderate compared to previous recoveries. Exports played an important role in growth, especially driven by the pharmaceutical industry and globalisation in general. The economy was assessed as balanced, with no major signs of overheating, but no significant new growth impulses either. In the period 2017-2019, production and employment have been close to their structural levels, so there has been no clear boom or bust in the business cycle. (Danmarks Økonomi, 2025)
+
+The COVID-19 pandemic in 2020-21 had significant socio-economic consequences in Denmark. It interrupted a positive economic cycle and caused a drop in GDP of almost 1.8% in 2020. Lockdowns and travel restrictions forced large parts of production capacity out of operation temporarily, and consumption of goods and services, such as leisure and cultural offerings, was severely curtailed. To counteract these challenges, fiscal policy was greatly eased and several relief packages for companies and their employees were adopted. A wage compensation scheme, where the state temporarily paid part of the salary of laid-off employees, helped limit the rise in unemployment, which peaked at 5.2% in May 2020. In addition, in both 2020 and 2021, large amounts of previously withheld holiday pay were released, helping to sustain private consumption. However, this did not prevent the decline of services consumption in the hospitality sector and net exports also fell. On the other hand, investments increased, especially in residential construction, which stimulated interest in home consumption and purchases and contributed to rising house prices, which in turn supported private consumption. (COVID-19-pandemiens Økonomiske Konsekvenser, 2024)
+
+The drop in GDP growth was smaller than in most other countries and was replaced in 2021 by the highest ever measured GDP growth of 7.4%. Denmark's economy was able to weather the pandemic with relative ease. When the pandemic officially ended in February 2022, Denmark was in a very favourable economic situation with a high level of activity and a low unemployment rate of 2.7%. At the same time, Denmark was the only EU country with a surplus in the public finances in 2020, and its public finance surplus was the largest among all EU countries in 2021. (COVID-19-pandemiens Økonomiske Konsekvenser, 2024)
+
+In 2023, the Danish economy entered a new business cycle phase with a more moderate GDP growth of 1,8%, as price increases, largely due to energy prices, and higher interest rates impacted consumption and housing investment. However, activity was sustained by a strong pharmaceutical industry, which led to a large increase in exports. (Økonomisk Redegørelse, December 2023, 2023).
+
+Exports from the pharmaceutical industry are still driving demand growth, and in 2024, the Danish GDP grew by 3.6%. Household consumption increased by 0.9% for the full year, mainly driven by increased vehicle purchases and leisure, culture and sport. In contrast, investments decreased by 0.8% in the fourth quarter and 0.1% for the full year, mainly due to declines in transport equipment investments and residential construction. (Markant BNP-fremgang I 2024, n.d.) The Danish economy is expected to remain in an economic boom in the coming years. Increased domestic demand and an improvement in Danish export markets are expected to contribute to broader growth across industries. A more moderate GDP growth of 1.7% is not expected until 2026. (Økonomisk Redegørelse, December 2024, 2024)
+
+## 5. Policy recommendations
+
+Based on the historical analysis and empirical findings of business cycles in Costa Rica and Denmark, it is evident that both countries face unique challenges shaped by their economic structures. Drawing on past policy successes and areas for improvement, the following recommendations aim to enhance economic resilience and stability in both nations, addressing their specific vulnerabilities and leveraging their strengths to navigate future economic perspectives effectively.
+
+Costa Rica’s economic volatility and susceptibility to external shocks highlight the need for targeted policy measures to enhance stability and resilience. To mitigate fluctuations, Costa Rica should prioritize diversifying its economic base beyond high-tech and tourism sectors, fostering growth in areas such as renewable energy, agriculture, and services. Strengthening fiscal buffers through improved tax collection and prudent public spending can help manage economic shocks more effectively. Additionally, enhancing labor market protections and promoting formal employment would reduce employment volatility and improve job stability. Investing in social safety nets and long-term savings mechanisms could also help individuals better smooth consumption during economic downturns. These measures, combined with continued institutional strengthening, can support Costa Rica’s transition toward greater economic stability and sustainable growth.
+
+In Denmark, recent business cycle dynamics indicate an increasing role of supply-side factors beyond traditional demand-driven inflation. Between 1985 and 2023, GDP and employment fluctuations were key inflationary drivers, but the 2022–2023 inflation surge was largely attributed to energy price shocks and supply chain disruptions rather than labor market overheating. (Trends and Cycles in the Danish Economy, 2024) Based on the increasing role of supply-side factors in influencing business cycles, a policy recommendation could be to diversify energy sources to mitigate the impact of external shocks. By promoting local renewables and diversifying the imports of traditional energy sources, Denmark can reduce its vulnerability to global commodity price cycles. This would not only help stabilize the economy but also align with Denmark's commitment to sustainability, continuing the momentum of the existing REPowerEU plan. (REPowerEU, 2022). Regarding fiscal policy, the Chairmanship of the Economic Councils (2024) warns that Denmark is experiencing high capacity pressures, with calls for fiscal tightening in 2025 to prevent overheating and inflationary risks. Implementing fiscal policy tightening is a prudent recommendation for Denmark, as it can help stabilize business cycles by reducing the risk of economic imbalances and ensuring sustainable growth. By addressing both supply-side vulnerabilities and fiscal policy, Denmark could enhance its economic resilience and ensure a stable and sustainable growth trajectory.
+
+## 6. Conclusion
+
+In conclusion, the comparative analysis of business cycles in Costa Rica and Denmark highlights the differences in macroeconomic stability, which are shaped by structural, institutional, and historical factors. Firstly, the second-moment analysis reveals that Costa Rica experiences significantly higher volatility across most economic indicators, particularly in consumption and employment, compared to Denmark. This reflects a more vulnerable economic structure, heavily exposed to external shocks and reliant on sectors like tourism and foreign investment. In contrast, Denmark’s lower volatility and higher persistence in variables such as employment and public spending point to a more stable, mature economy supported by robust institutions and social safety nets.
+
+Secondly, the historical review deepens this understanding by illustrating the economic events affecting business cycles throughout time. Costa Rica’s cycles have been influenced by neoliberal reforms, external crises, and fiscal challenges, underlining its sensitivity to global economic fluctuations and internal policy constraints. Meanwhile, Denmark’s economic fluctuations have largely been driven by energy shocks, policy shifts, and coordinated fiscal and monetary responses. Its strong welfare system and institutional credibility have consistently helped to moderate the impacts of downturns and support long-term stability.
+
+Thirdly, these findings support adapted policy recommendations. Costa Rica should focus on diversifying its economy, strengthening fiscal buffers, and improving labor market protections to reduce its sensitivity to shocks. Denmark, on the other hand, should prioritize managing capacity constraints and mitigating supply-side risks through energy diversification and prudent fiscal tightening.
+
+Ultimately, understanding the dynamics of business cycles in contrasting economies like Costa Rica and Denmark provides valuable insights into effective stabilization strategies. Given the significant welfare costs associated with economic volatility, as highlighted by Georgarakos et al. (2025), designing policies that enhance economic resilience is not only a macroeconomic imperative but a matter of societal well-being. Continued attention to the causes and consequences of business cycles remains essential for informed and equitable policymaking.
+
+\newpage
+## References
+
+Aarhus Universitet. (n.d.). *Genopretningspolitikken, 1982-1993*. Retrieved from [danmarkshistorien.dk](https://danmarkshistorien.dk/vis/materiale/genopretningspolitikken-1982-1993)
+
+Aarhus Universitet. (n.d.). *Økonomisk politik, 1972-1993*. Retrieved from [danmarkshistorien.dk](https://danmarkshistorien.dk/vis/materiale/oekonomisk-politik-1972-1993)
+
+Aarhus Universitet. (n.d.). *Servicesamfundets fremvækst, ca. 1960-1980*. Retrieved from [danmarkshistorien.dk](https://danmarkshistorien.dk/vis/materiale/servicesamfundets-fremvaekst-ca-1960-1980)
+
+Aarhus University. (n.d.). *3. Economic growth and the welfare state*. Retrieved from [danmarkshistorien.dk](https://danmarkshistorien.dk/en/open-online-course/modules/module-8-the-post-war-era-1945-1973/3-economic-growth-and-the-welfare-state)
+
+ADAM. (n.d.). *Offentlige finanser*. In *Offentlige finanser* (pp. 139-141). Retrieved from [dst.dk](https://www.dst.dk/Site/Dst/SingleFiles/GetArchiveFile.aspx?fi=adam&fo=adambog_kap8)
+
+Andersen, T. M., Bentzen, J., Jensen, S. E. H., Smith, V., & Westergård-Nielsen, N. C. (2017). *The Danish economy in a global context*. Djoef Publishing.
+
+Ardanaz, M., Barreix, A., & Pineda, E. (2021, June 23). *Una reforma fiscal posible: lecciones del caso de Costa Rica* \[A possible fiscal reform: Lessons from the Costa Rican case\]. Inter-American Development Bank. Retrieved from [blogs.iadb.org](https://blogs.iadb.org/gestion-fiscal/es/una-reforma-fiscal-posible-lecciones-del-caso-de-costa-rica/)
+
+Barquero, M. (2020, December 10). *Intel reabrirá operaciones de ensamble en Costa Rica y contratará a 200 empleados* \[Intel will reopen assembly operations in Costa Rica and hire 200 employees\]. *La Nación*. Retrieved from [nacion.com](https://www.nacion.com/economia/politica-economica/intel-reabrira-operaciones-de-ensamble-en-costa/VGP7I6MDWVAIRIHB4D5AMBA3ZE/story/)
+
+Cárdenas, M. J. (2014). *Intel y Costa Rica* \[Intel and Costa Rica\]. *Portafolio*. Retrieved from [portafolio.co](https://www.portafolio.co/opinion/manuel-jose-cardenas/intel-costa-rica-54668)
+
+Carstens, A. (2004). *Twenty years without a crisis in Costa Rica: The IMF's view, Speech by Agustín Carstens, Deputy Managing Director, IMF*. International Monetary Fund. Retrieved from [imf.org](https://www.imf.org/en/News/Articles/2015/09/28/04/53/sp071204)
+
+CIBOB. (2025) *Abel Pacheco de la Espriella*. Barcelona Centre for International Affairs. Retrieve from [cidob.org](https://www.cidob.org/lider-politico/abel-pacheco-de-la-espriella)
+
+Chairmanship of the Economic Councils. (2024). *Danish economy, Autumn 2024* \[Report\]. Retrieved from [dors.dk](https://dors.dk/files/media/E24_Summary_endelig.pdf)
+
+*COVID-19-pandemiens økonomiske konsekvenser*. (2024, December 5). Lex. Retrieved from [lex.dk](https://lex.dk/COVID-19-pandemiens_%C3%B8konomiske_konsekvenser)
+
+Dam, N. A. (2008). *Konjunkturcykler i Danmark og Europa*. Danmarks Nationalbank Working Papers, No. 56. Retrieved from [econstor.eu](https://www.econstor.eu/bitstream/10419/82340/1/577906674.pdf)
+
+*Danmarks økonomi*. (2025, January 10). Lex. Retrieved from [lex.dk](https://lex.dk/Danmarks_%C3%B8konomi)
+
+Drescher, M., Mortensen, L. H., Tofting, K., & Habes, E. (2018). *10 år efter krisen ramte: Hvordan har dansk økonomi klaret sig sammenlignet med de to seneste tilbageslag?* Retrieved from [dst.dk](https://www.dst.dk/Site/Dst/Udgivelser/nyt/GetAnalyse.aspx?cid=31387)
+
+Economic Commission for Latin America and the Caribbean (ECLAC). (2009). *Preliminary overview of the economies of Latin America and the Caribbean 2009*. United Nations. Retrieved from [cepal.org](https://repositorio.cepal.org/server/api/core/bitstreams/6beba4c8-d13c-468d-b419-eb4a34bcad44/content)
+
+*Fakta om dansk økonomi*. (2019, March 29). Retrieved from [dst.dk](https://www.dst.dk/da/Statistik/nyheder-analyser-publ/bagtal/2019/2019-03-29-faktaark-om-dansk-oekonomi)
+
+Georgarakos, D., Kim, K. H., Coibion, O., Shim, M., Lee, M. A., Gorodnichenko, Y., Kenny, G., Han, S., & Weber, M. (2025). *How costly are business cycle volatility and inflation? A Vox populi approach* (NBER Working Paper No. 33476). Retrieved from [doi.org](https://doi.org/10.3386/w33476)
+
+Hansen, N. L., & Danmarks Nationalbank. (2012). *The cyclicality of the Danish government budget*. Danmarks Nationalbank.
+
+*Hvad skete der under finanskrisen?* (n.d.). Pengepolitik og bankernes rolle i dansk økonomi. Retrieved from [nationalbanken.dk](https://undervisning.nationalbanken.dk/en/node/158)
+
+Instituto Nacional de Estadística y Censos (INEC). (2025). *Encuesta continua de empleo*. Retrieved from [inec.cr](https://inec.cr/estadisticas-fuentes/encuestas/encuesta-continua-empleo)
+
+Isaksen, J., Mikkelsen, U., Nellemann, P. B., & Risbjerg, L. (2012). *Konjunkturcykler i arbejdsmarkedsreformer i Danmark og Tyskland*. Danmarks Nationalbank, 3. kvartal, del 1. Retrieved from [moreinfo.addi.dk](https://moreinfo.addi.dk/2.11/more_info_get.php?lokalid=35305998&attachment_type=856_a&bibliotek=870971&source_id=870970&key=ab3f18c6f1967a1afe71)
+
+Jensen, F., Knudsen, D., Graversen, T. R., & Mackie, M. (n.d.). *Bobler og finanskrise - danske konjunkturudsving 1999-2010*. Tema, 5-7. Retrieved from [dst.dk](https://www.dst.dk/Site/Dst/SingleFiles/GetArchiveFile.aspx?fi=921644904&fo=0&ext=formid)
+
+*Konjunktur*. (n.d.). Lex. Retrieved from [lex.dk](https://lex.dk/konjunktur)
+
+*Markant BNP-fremgang i 2024*. (n.d.). Retrieved from [dst.dk](https://www.dst.dk/da/Statistik/nyheder-analyser-publ/nyt/NytHtml?cid=48827)
+
+Ministerio de Comercio Exterior de Costa Rica (COMEX). (2025). *TLC Centroamerica - Republica Dominicana, Estados Unidos (CAFTA-DR)*. Retrieved from [comex.go.cr](https://www.comex.go.cr/tratados/cafta-dr/)
+
+Monahov, A. (2023). *hpfilter: An R implementation of the one- and two-sided Hodrick-Prescott filter*. Retrieved from [cran.rstudio.com](https://cran.rstudio.com/web/packages/hpfilter/vignettes/hpfilter_guide.html)
+
+Mora Solano, M. S. (2021). *Huelga sobre la reforma fiscal en Costa Rica*. Revista de Ciencias Sociales (Cr), 4(174), 13-15. Universidad de Costa Rica.
+
+Organisation for Economic Co-operation and Development (OECD). (2025). *Quarterly GDP and components - expenditure approach, US Dollars*. OECD Data Explorer. Retrieved from [data-explorer.oecd.org](https://data-explorer.oecd.org/vis?df%5Bds%5D=dsDisseminateFinalDMZ&df%5Bid%5D=DSD_NAMAIN1@DF_QNA_EXPENDITURE_USD&df%5Bag%5D=OECD.SDD.NAD&df%5Bvs%5D=1.1&dq=Q..CRI+DNK.S1M+S13+S1..B1GQ+P51G+P3.....V..&pd=1960-Q1,2024-Q4&to%5BTIME_PERIOD%5D=false&vw=tb)
+
+Organisation for Economic Co-operation and Development (OECD). (2025). *Quarterly GDP and components - expenditure approach, national currency*. OECD Data Explorer. Retrieved from [data-explorer.oecd.org](https://data-explorer.oecd.org/vis?tm=gdp%20national&pg=0&hc%5BTopic%5D=&snb=341&df%5Bds%5D=dsDisseminateFinalDMZ&df%5Bid%5D=DSD_NAMAIN1@DF_QNA_EXPENDITURE_NATIO_CURR&df%5Bag%5D=OECD.SDD.NAD&df%5Bvs%5D=1.1)
+
+Organisation for Economic Co-operation and Development (OECD). (2025). *Quarterly compensation of employees by economic activity*. OECD Data Explorer. Retrieved from [data-explorer.oecd.org](https://data-explorer.oecd.org/vis?pg=0&snb=76&tm=compensation&vw=tb&df%5Bds%5D=dsDisseminateFinalDMZ&df%5Bid%5D=DSD_NAMAIN1@DF_QNA_BY_ACTIVITY_COE&df%5Bag%5D=OECD.SDD.NAD&df%5Bvs%5D=1.1&dq=Q.Y.DNK...D11.._T.....&pd=1991-Q1,2024-Q4&to%5BTIME_PERIOD%5D=false)
+
+Organisation for Economic Co-operation and Development (OECD). (2025). *Quarterly population and employment, national concept*. OECD Data Explorer. Retrieved from [data-explorer.oecd.org](https://data-explorer.oecd.org/vis?tm=Employment&pg=0&snb=531&vw=ov&df%5Bds%5D=dsDisseminateFinalDMZ&df%5Bid%5D=DSD_NAMAIN1@DF_QNA_POP_EMPNC&df%5Bag%5D=OECD.SDD.NAD&df%5Bvs%5D=1.1&dq=Q.Y.DNK+CRI...EMP.......&pd=1991-Q1,2024-Q4&to%5BTIME_PERIOD%5D=false&ly%5Bcl%5D=TIME_PERIOD&ly%5Brs%5D=REF_AREA&ly%5Brw%5D=COMBINED_UNIT_MEASURE)
+
+REPowerEU. (2022, May 18). European Commission. Retrieved from [europa.eu](https://commission.europa.eu/strategy-and-policy/priorities-2019-2024/european-green-deal/repowereu-affordable-secure-and-sustainable-energy-europe_en)
+
+Sørensen, P. B. (2009). *NEDTUREN i DANSK ØKONOMI: HVOR MEGET VAR SELVFORSKYLDT?* Det Økonomiske Råd. Retrieved from [econ.ku.dk](https://web.econ.ku.dk/pbs/Dokumentfiler/Publications%20(Danish)/Samfunds%C3%B8konomen%20PBS_revideret.pdf)
+
+Stansifer, C. L., & Karnes, T. L. (2023). *A brief history of Central America*. Routledge. Retrieved from [britannica.com](https://www.britannica.com/topic/history-of-Costa-Rica)
+
+*Trends and cycles in the Danish economy*. (2024, May 31). Nationalbanken. Retrieved from [nationalbanken.dk](https://www.nationalbanken.dk/en/news-and-knowledge/publications-and-speeches/economic-memo/2024/trends-and-cycles-in-the-danish-economy#preread1)
+
+World Bank Group. (2006). *The impact of Intel in Costa Rica: Nine years after the decision to invest*. Retrieved from [documents1.worldbank.org](https://documents1.worldbank.org/curated/en/540381468032652317/pdf/374020CR0Impact0of0Intel01PUBLIC1.pdf)
+
+Voorend K, Abarca DA. (2023). *Costa Rica's social policy response to the pandemic: From potential for universalism to austerity-as-usual*. Glob Soc Policy. 2023 Aug;23(2):364-368. doi: 10.1177/14680181231180532. Epub 2023 Jun 16. PMID: 38603007; PMCID: PMC10290924. Retrieved from [ncbi.nlm.nih.gov](https://pubmed.ncbi.nlm.nih.gov/38603007/)
+
+*Økonomisk Redegørelse, december 2023*. (2023, December 12). Retrieved from [oem.dk](https://oem.dk/publikationer/2023/december/oekonomisk-redegoerelse-december-2023/)
+
+*Økonomisk Redegørelse, december 2024*. (2024, May 12). Retrieved from [oem.dk](https://oem.dk/publikationer/2024/december/oekonomisk-redegoerelse-december-2024/)
